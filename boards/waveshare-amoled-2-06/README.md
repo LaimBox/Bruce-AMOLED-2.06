@@ -93,6 +93,14 @@ the geometry changes.
   same fills, so the cause is still open. The track is now erased in <= 128-row
   stripes instead of one 2410-pixel write.
 
+## Support this port
+
+The port is free and stays free (AGPLv3). If it saved you a weekend of
+debugging and you want to say thanks: **https://boosty.to/arslanchik**
+
+Bug reports and photos from your own unit are just as useful - especially of
+any part of the UI that still gets clipped by the corners.
+
 ## Credits and licence
 
 Based on [Bruce](https://github.com/pr3y/Bruce) by pr3y and contributors -
