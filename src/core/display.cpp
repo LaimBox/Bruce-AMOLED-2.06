@@ -22,7 +22,7 @@
 #define UI_STATUS_INSET UI_CORNER_INSET
 #endif
 #ifndef UI_CLOCK_Y
-#define UI_CLOCK_Y 17
+#define UI_CLOCK_Y 12
 #endif
 #ifndef UI_CLOCK_X
 #define UI_CLOCK_X (12 + UI_STATUS_INSET)
@@ -44,6 +44,19 @@
 #endif
 #ifndef UI_SAFE_INSET
 #define UI_SAFE_INSET 0
+#endif
+#ifndef UI_BORDER_RADIUS
+#if UI_CORNER_INSET > 0
+#define UI_BORDER_RADIUS UI_CORNER_INSET
+#else
+#define UI_BORDER_RADIUS 5 // upstream look on every other board
+#endif
+#endif
+// Footers are drawn below the visible area on most boards (the glass hides
+// them); a board whose footer is actually visible sets this to the horizontal
+// inset of the footer band.
+#ifndef UI_FOOTER_INSET
+#define UI_FOOTER_INSET 0
 #endif
 
 // Send the ST7789 into or out of sleep mode
@@ -102,14 +115,23 @@ void displayScrollingText(const String &text, Opt_Coord &coord, bool highlight) 
 ***************************************************************************************/
 void TouchFooter(uint16_t color) {
 #if defined(HAS_TOUCH)
-    const int ins = UI_CORNER_INSET;
-    const int usable = tftWidth - 2 * ins;
-    tft.drawRoundRect(5 + ins, tftHeight - 6, tftWidth - 10 - 2 * ins, 22, 5, color);
+#if UI_FOOTER_INSET > 0
+    const int fin = UI_FOOTER_INSET;
+    const int fw = tftWidth - 2 * fin;
+    tft.drawRoundRect(fin, tftHeight - 28, fw, 20, 6, color);
     tft.setTextColor(color);
     tft.setTextSize(FM);
-    tft.drawCentreString("PREV", ins + usable / 6, tftHeight - 3, 1);
-    tft.drawCentreString("SEL", ins + usable / 2, tftHeight - 3, 1);
-    tft.drawCentreString("NEXT", ins + 5 * usable / 6, tftHeight - 3, 1);
+    tft.drawCentreString("PREV", fin + fw / 6, tftHeight - 22, 1);
+    tft.drawCentreString("SEL", fin + fw / 2, tftHeight - 22, 1);
+    tft.drawCentreString("NEXT", fin + 5 * fw / 6, tftHeight - 22, 1);
+#else
+    tft.drawRoundRect(5, tftHeight + 2, tftWidth - 10, 43, 5, color);
+    tft.setTextColor(color);
+    tft.setTextSize(FM);
+    tft.drawCentreString("PREV", tftWidth / 6, tftHeight + 4, 1);
+    tft.drawCentreString("SEL", tftWidth / 2, tftHeight + 4, 1);
+    tft.drawCentreString("NEXT", 5 * tftWidth / 6, tftHeight + 4, 1);
+#endif
 #endif
 }
 /***************************************************************************************
@@ -117,14 +139,23 @@ void TouchFooter(uint16_t color) {
 ** Description:   Draw touch screen footer
 ***************************************************************************************/
 void MegaFooter(uint16_t color) {
-    const int ins = UI_CORNER_INSET;
-    const int usable = tftWidth - 2 * ins;
-    tft.drawRoundRect(5 + ins, tftHeight - 6, tftWidth - 10 - 2 * ins, 22, 5, color);
+#if UI_FOOTER_INSET > 0
+    const int fin = UI_FOOTER_INSET;
+    const int fw = tftWidth - 2 * fin;
+    tft.drawRoundRect(fin, tftHeight - 28, fw, 20, 6, color);
     tft.setTextColor(color);
     tft.setTextSize(FM);
-    tft.drawCentreString("Exit", ins + usable / 6, tftHeight - 3, 1);
-    tft.drawCentreString("UP", ins + usable / 2, tftHeight - 3, 1);
-    tft.drawCentreString("DOWN", ins + 5 * usable / 6, tftHeight - 3, 1);
+    tft.drawCentreString("Exit", fin + fw / 6, tftHeight - 22, 1);
+    tft.drawCentreString("UP", fin + fw / 2, tftHeight - 22, 1);
+    tft.drawCentreString("DOWN", fin + 5 * fw / 6, tftHeight - 22, 1);
+#else
+    tft.drawRoundRect(5, tftHeight + 2, tftWidth - 10, 43, 5, color);
+    tft.setTextColor(color);
+    tft.setTextSize(FM);
+    tft.drawCentreString("Exit", tftWidth / 6, tftHeight + 4, 1);
+    tft.drawCentreString("UP", tftWidth / 2, tftHeight + 4, 1);
+    tft.drawCentreString("DOWN", 5 * tftWidth / 6, tftHeight + 4, 1);
+#endif
 }
 
 /***************************************************************************************
@@ -907,7 +938,9 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
     tft.setTextSize(FP);
     tft.drawPixel(0, 0, 0);
     tft.fillRect(6, BORDER_PAD_Y, tftWidth - 12, 8 * FP, bruceConfig.bgColor);
-    tft.drawString(title, 12, BORDER_PAD_Y);
+    // x=12 put the first letter right on the corner curve; 30 keeps the whole
+    // title inside it. The font stays as it is.
+    tft.drawString(title, 30, BORDER_PAD_Y);
 
     // middle of the drawing area
     int middle = 25 /*status*/ + (tftHeight - 30 /*status + bottom margin*/) / 2;
@@ -947,21 +980,17 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
     tft.fillRect(6, middle_down, tftWidth - 12, 8 * FM, bruceConfig.bgColor);
     tft.drawCentreString(thirdOption, tftWidth / 2, middle_down, SMOOTH_FONT);
 
-    // Scrollbar. It sits in the last five columns, which on this panel are only
-    // visible between UI_SCROLLBAR_TOP and UI_SCROLLBAR_BOT, so the track is
-    // clamped to that band and the thumb is scaled to it instead of running
-    // under the bezel. The track is wiped in <=128-row stripes: a single
-    // 5 x 482 fill is three back-to-back QSPI bursts and a long write like that
-    // has been seen to leave old pixels behind on this panel.
-    const int sbX = tftWidth - 5;
+    // Scrollbar. The last five columns are half-eaten by the bezel, so the bar
+    // sits 14 px inside. It is drawn as a dark track plus a thumb: the track
+    // shows the full range, and any pixel that fails to erase will show up as a
+    // bright mark on grey instead of hiding in the black background.
+    const int sbX = tftWidth - 14;
     const int sbTop = UI_SCROLLBAR_TOP;
     const int sbBot = (UI_SCROLLBAR_BOT < tftHeight) ? UI_SCROLLBAR_BOT : tftHeight;
     const int sbH = sbBot - sbTop;
     if (sbH > 0) {
-        for (int y = sbTop; y < sbBot; y += 128) {
-            int h = (sbBot - y) < 128 ? (sbBot - y) : 128;
-            tft.fillRect(sbX, y, 5, h, bruceConfig.bgColor);
-        }
+        const uint16_t trackColor = 0x2104; // very dark grey, independent of the theme
+        tft.fillRect(sbX, sbTop, 5, sbH, trackColor);
         int steps = menuSize > 1 ? menuSize - 1 : 1;
         int thumbH = sbH / (menuSize > 0 ? menuSize : 1);
         if (thumbH < 10) thumbH = 10;
@@ -988,7 +1017,12 @@ void drawStatusBar() {
 
     if (bruceConfig.theme.border) {
         tft.drawRoundRect(
-            5 + ins, 5 + ins, tftWidth - 10 - 2 * ins, tftHeight - 10 - 2 * ins, ins, bruceConfig.priColor
+            5 + ins,
+            5 + ins,
+            tftWidth - 10 - 2 * ins,
+            tftHeight - 10 - 2 * ins,
+            UI_BORDER_RADIUS,
+            bruceConfig.priColor
         );
 #if UI_STATUS_LINE_Y > 0
         tft.drawLine(5 + ins, UI_STATUS_LINE_Y, tftWidth - 6 - ins, UI_STATUS_LINE_Y, bruceConfig.priColor);
@@ -1169,19 +1203,21 @@ void drawBatteryStatus(uint8_t bat) {
     uint16_t barcolor = bruceConfig.priColor;
     if (bat < 16) barcolor = color = TFT_RED;
 
-    tft.drawRoundRect(tftWidth - 42 - ins, 12, 34, 17, 2, color);
+    // Only the horizontal position is board specific: the vertical offsets stay
+    // as upstream so every other board keeps its exact battery layout.
+    tft.drawRoundRect(tftWidth - 42 - ins, 7, 34, 17, 2, color);
     tft.setTextSize(FP);
-    tft.fillRect(tftWidth - 85 - ins, 12, 42, 18, bruceConfig.bgColor);
+    tft.fillRect(tftWidth - 85 - ins, 7, 42, 18, bruceConfig.bgColor);
     if (charging) {
         tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-        tft.drawRightString("CHG", tftWidth - 44 - ins, 17, 1);
+        tft.drawRightString("CHG", tftWidth - 44 - ins, 12, 1);
     } else {
         tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-        tft.drawRightString((bat == 100 ? "" : " ") + String(bat) + "%", tftWidth - 44 - ins, 17, 1);
+        tft.drawRightString((bat == 100 ? "" : " ") + String(bat) + "%", tftWidth - 44 - ins, 12, 1);
     }
-    tft.fillRoundRect(tftWidth - 40 - ins, 14, 30 * bat / 100, 13, 2, barcolor);
-    tft.drawLine(tftWidth - 30 - ins, 14, tftWidth - 30 - ins, 14 + 13, bruceConfig.bgColor);
-    tft.drawLine(tftWidth - 20 - ins, 14, tftWidth - 20 - ins, 14 + 13, bruceConfig.bgColor);
+    tft.fillRoundRect(tftWidth - 40 - ins, 9, 30 * bat / 100, 13, 2, barcolor);
+    tft.drawLine(tftWidth - 30 - ins, 9, tftWidth - 30 - ins, 9 + 13, bruceConfig.bgColor);
+    tft.drawLine(tftWidth - 20 - ins, 9, tftWidth - 20 - ins, 9 + 13, bruceConfig.bgColor);
 }
 
 void drawWireguardStatus(int x, int y) {

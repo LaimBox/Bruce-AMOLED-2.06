@@ -51,9 +51,19 @@ static const uint8_t SCL = SYS_I2C_SCL;
 // Status bar. The clock is twice as tall (the bitmap font is 6x8, so size 2 is
 // 12x16 px) and green. At y=12 the corner curve is still 45 px away from the
 // left edge, so x=68 clears it, and the clock (60 px wide) ends well before the
-// icons. The battery keeps UI_STATUS_INSET from the right edge; 40 px is the
-// smallest inset that keeps its top-right corner inside the curve.
-#define UI_STATUS_INSET 40
+// icons. The battery keeps UI_STATUS_INSET from the right edge: at 40 px the
+// icon's right edge sat at x=362, exactly on the curve, and the outline was
+// visibly eaten by the bezel - 62 px puts it at x=340 with a real margin.
+#define UI_STATUS_INSET 62
+
+// Radius of the themed frame. A frame inset by d stays inside a corner of
+// radius R only if its own radius is at least R-d, so 90-39 = 51.
+#define UI_BORDER_RADIUS 51
+
+// The touch footer (PREV / SEL / NEXT) is drawn inside this inset instead of
+// below the screen. At y = height-28 the bottom curve has eaten ~58 px per
+// side, so the band starts at x=62.
+#define UI_FOOTER_INSET 62
 #define UI_CLOCK_X 68
 #define UI_CLOCK_Y 12
 #define UI_CLOCK_SIZE 2
