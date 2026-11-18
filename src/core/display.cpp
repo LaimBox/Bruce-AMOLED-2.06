@@ -1091,6 +1091,74 @@ void drawStatusBar() {
     }
 }
 
+void drawMainBorder(bool clear) {
+    if (clear) {
+        tft.drawPixel(0, 0, 0);
+        tft.fillScreen(bruceConfig.bgColor);
+    }
+    setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
+    tft.setTextDatum(0);
+
+    // if(wifiConnected) {tft.print(timeStr);} else {tft.print("BRUCE 1.0b");}
+
+    drawStatusBar();
+
+#if defined(HAS_TOUCH)
+    TouchFooter();
+#endif
+}
+
+void drawMainBorderWithTitle(const String &title, bool clear) {
+    drawMainBorder(clear);
+    printTitle(title);
+}
+
+void printTitle(const String &title) {
+    String t = title;
+    t.toUpperCase();
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
+
+    // Scale down title font if it doesn't fit the screen width
+    int titleSize = FM;
+    while (titleSize > FP && (int)(t.length() * titleSize * LW) > tftWidth - 2 * BORDER_PAD_X) {
+        titleSize--;
+    }
+
+    tft.setTextSize(titleSize);
+    tft.setCursor((tftWidth - (t.length() * titleSize * LW)) / 2, BORDER_PAD_Y);
+    tft.println(t);
+
+    tft.setTextSize(FP);
+}
+
+void printSubtitle(const String &subtitle, bool withLine) {
+    int16_t cursorX = (tftWidth - (subtitle.length() * FP * LW)) / 2;
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
+    tft.setTextSize(FP);
+
+    tft.setCursor(cursorX, BORDER_PAD_Y + FM * LH);
+    tft.println(subtitle);
+
+    if (withLine) {
+        String line = "";
+        for (byte i = 0; i < subtitle.length(); i++) line += "-";
+
+        tft.setCursor(cursorX, tft.getCursorY());
+        tft.println(line);
+    }
+}
+
+void printFootnote(const String &text) {
+    tft.setTextSize(FP);
+    tft.drawRightString(text, tftWidth - BORDER_PAD_X, tftHeight - BORDER_PAD_X - FP * LH, SMOOTH_FONT);
+}
+
+void printCenterFootnote(const String &text) {
+    tft.fillRect(10, tftHeight - BORDER_PAD_X - FP * LH, tftWidth - 20, FP * LH, bruceConfig.bgColor);
+    tft.setTextSize(FP);
+    tft.drawCentreString(text, tftWidth / 2, tftHeight - BORDER_PAD_X - FP * LH, SMOOTH_FONT);
+}
+
 void drawBatteryStatus(uint8_t bat) {
     if (bat == 0) return;
 
