@@ -10,6 +10,42 @@
 
 #define MAX_MENU_SIZE (int)(tftHeight / 25)
 
+// Rounded AMOLED corners: boards whose physical panel has rounded corners set
+// UI_CORNER_INSET in their pins_arduino.h. Status bar items and the touch
+// footer are shifted inward by this amount so they don't get clipped.
+#ifndef UI_CORNER_INSET
+#define UI_CORNER_INSET 0
+#endif
+// Horizontal inset used by the status bar only. On boards with big rounded
+// corners the clock/battery need more room than the frame border does.
+#ifndef UI_STATUS_INSET
+#define UI_STATUS_INSET UI_CORNER_INSET
+#endif
+#ifndef UI_CLOCK_Y
+#define UI_CLOCK_Y 17
+#endif
+#ifndef UI_CLOCK_X
+#define UI_CLOCK_X (12 + UI_STATUS_INSET)
+#endif
+#ifndef UI_CLOCK_SIZE
+#define UI_CLOCK_SIZE 1
+#endif
+#ifndef UI_CLOCK_COLOR
+#define UI_CLOCK_COLOR bruceConfig.priColor
+#endif
+#ifndef UI_STATUS_LINE_Y
+#define UI_STATUS_LINE_Y 25
+#endif
+#ifndef UI_SCROLLBAR_TOP
+#define UI_SCROLLBAR_TOP 0
+#endif
+#ifndef UI_SCROLLBAR_BOT
+#define UI_SCROLLBAR_BOT tftHeight
+#endif
+#ifndef UI_SAFE_INSET
+#define UI_SAFE_INSET 0
+#endif
+
 // Send the ST7789 into or out of sleep mode
 void panelSleep(bool on) {
 #if defined(ST7789_2_DRIVER) || defined(ST7789_DRIVER)
@@ -66,12 +102,14 @@ void displayScrollingText(const String &text, Opt_Coord &coord, bool highlight) 
 ***************************************************************************************/
 void TouchFooter(uint16_t color) {
 #if defined(HAS_TOUCH)
-    tft.drawRoundRect(5, tftHeight + 2, tftWidth - 10, 43, 5, color);
+    const int ins = UI_CORNER_INSET;
+    const int usable = tftWidth - 2 * ins;
+    tft.drawRoundRect(5 + ins, tftHeight - 6, tftWidth - 10 - 2 * ins, 22, 5, color);
     tft.setTextColor(color);
     tft.setTextSize(FM);
-    tft.drawCentreString("PREV", tftWidth / 6, tftHeight + 4, 1);
-    tft.drawCentreString("SEL", tftWidth / 2, tftHeight + 4, 1);
-    tft.drawCentreString("NEXT", 5 * tftWidth / 6, tftHeight + 4, 1);
+    tft.drawCentreString("PREV", ins + usable / 6, tftHeight - 3, 1);
+    tft.drawCentreString("SEL", ins + usable / 2, tftHeight - 3, 1);
+    tft.drawCentreString("NEXT", ins + 5 * usable / 6, tftHeight - 3, 1);
 #endif
 }
 /***************************************************************************************
@@ -79,12 +117,14 @@ void TouchFooter(uint16_t color) {
 ** Description:   Draw touch screen footer
 ***************************************************************************************/
 void MegaFooter(uint16_t color) {
-    tft.drawRoundRect(5, tftHeight + 2, tftWidth - 10, 43, 5, color);
+    const int ins = UI_CORNER_INSET;
+    const int usable = tftWidth - 2 * ins;
+    tft.drawRoundRect(5 + ins, tftHeight - 6, tftWidth - 10 - 2 * ins, 22, 5, color);
     tft.setTextColor(color);
     tft.setTextSize(FM);
-    tft.drawCentreString("Exit", tftWidth / 6, tftHeight + 4, 1);
-    tft.drawCentreString("UP", tftWidth / 2, tftHeight + 4, 1);
-    tft.drawCentreString("DOWN", 5 * tftWidth / 6, tftHeight + 4, 1);
+    tft.drawCentreString("Exit", ins + usable / 6, tftHeight - 3, 1);
+    tft.drawCentreString("UP", ins + usable / 2, tftHeight - 3, 1);
+    tft.drawCentreString("DOWN", ins + 5 * usable / 6, tftHeight - 3, 1);
 }
 
 /***************************************************************************************
@@ -750,7 +790,7 @@ int loopOptions(
 void progressHandler(int progress, size_t total, const String &message) {
     int barWidth = map(progress, 0, total, 0, tftWidth - 40);
     if (barWidth < 3) {
-        tft.fillRect(6, 27, tftWidth - 12, tftHeight - 33, bruceConfig.bgColor);
+        tft.fillRect(6, BORDER_PAD_Y, tftWidth - 12, tftHeight - BORDER_PAD_Y - 8, bruceConfig.bgColor);
         tft.drawRect(18, tftHeight - 47, tftWidth - 36, 17, bruceConfig.priColor);
         displayRedStripe(message, TFT_WHITE, bruceConfig.priColor);
     }
@@ -866,8 +906,8 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
     tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
     tft.setTextSize(FP);
     tft.drawPixel(0, 0, 0);
-    tft.fillRect(6, 30, tftWidth - 12, 8 * FP, bruceConfig.bgColor);
-    tft.drawString(title, 12, 30);
+    tft.fillRect(6, BORDER_PAD_Y, tftWidth - 12, 8 * FP, bruceConfig.bgColor);
+    tft.drawString(title, 12, BORDER_PAD_Y);
 
     // middle of the drawing area
     int middle = 25 /*status*/ + (tftHeight - 30 /*status + bottom margin*/) / 2;
@@ -907,40 +947,56 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
     tft.fillRect(6, middle_down, tftWidth - 12, 8 * FM, bruceConfig.bgColor);
     tft.drawCentreString(thirdOption, tftWidth / 2, middle_down, SMOOTH_FONT);
 
-    tft.fillRect(tftWidth - 5, 0, 5, tftHeight, bruceConfig.bgColor);
-    tft.fillRect(tftWidth - 5, index * tftHeight / menuSize, 5, tftHeight / menuSize, bruceConfig.priColor);
+    // Scrollbar. It sits in the last five columns, which on this panel are only
+    // visible between UI_SCROLLBAR_TOP and UI_SCROLLBAR_BOT, so the track is
+    // clamped to that band and the thumb is scaled to it instead of running
+    // under the bezel. The track is wiped in <=128-row stripes: a single
+    // 5 x 482 fill is three back-to-back QSPI bursts and a long write like that
+    // has been seen to leave old pixels behind on this panel.
+    const int sbX = tftWidth - 5;
+    const int sbTop = UI_SCROLLBAR_TOP;
+    const int sbBot = (UI_SCROLLBAR_BOT < tftHeight) ? UI_SCROLLBAR_BOT : tftHeight;
+    const int sbH = sbBot - sbTop;
+    if (sbH > 0) {
+        for (int y = sbTop; y < sbBot; y += 128) {
+            int h = (sbBot - y) < 128 ? (sbBot - y) : 128;
+            tft.fillRect(sbX, y, 5, h, bruceConfig.bgColor);
+        }
+        int steps = menuSize > 1 ? menuSize - 1 : 1;
+        int thumbH = sbH / (menuSize > 0 ? menuSize : 1);
+        if (thumbH < 10) thumbH = 10;
+        if (thumbH > sbH) thumbH = sbH;
+        int thumbY = sbTop + (int)((long)index * (sbH - thumbH) / steps);
+        tft.fillRect(sbX, thumbY, 5, thumbH, bruceConfig.priColor);
+    }
 
 #if defined(HAS_TOUCH)
     tft.drawCentreString("\\/", tftWidth / 2, middle_down + (FM * LH + 6), 1);
     tft.setTextColor(getColorVariation(bruceConfig.priColor), bruceConfig.bgColor);
-    tft.drawString("[ x ]", 7, 7, 1);
+    // The touch map treats the whole top-left third as Esc; this marks it, but
+    // it has to stay clear of the corner curve (x=7,y=7 was fully hidden).
+    tft.setTextSize(FP);
+    tft.drawString("[ x ]", 30, 30, 1);
     TouchFooter();
 #endif
 }
 
 void drawStatusBar() {
+    const int ins = UI_CORNER_INSET;
     uint8_t bat = getBattery();
     if (bat > 0) drawBatteryStatus(bat);
 
     if (bruceConfig.theme.border) {
-        tft.drawRoundRect(5, 5, tftWidth - 10, tftHeight - 10, 5, bruceConfig.priColor);
-        tft.drawLine(5, 25, tftWidth - 6, 25, bruceConfig.priColor);
-    }
-
-    if (clock_set) {
-        setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
-        tft.fillRect(12, 12, 60, LH, bruceConfig.bgColor);
-#if defined(HAS_RTC)
-        updateTimeStr(_rtc.getTimeStruct());
-#else
-        updateTimeStr(rtc.getTimeStruct());
+        tft.drawRoundRect(
+            5 + ins, 5 + ins, tftWidth - 10 - 2 * ins, tftHeight - 10 - 2 * ins, ins, bruceConfig.priColor
+        );
+#if UI_STATUS_LINE_Y > 0
+        tft.drawLine(5 + ins, UI_STATUS_LINE_Y, tftWidth - 6 - ins, UI_STATUS_LINE_Y, bruceConfig.priColor);
 #endif
-        tft.print(timeStr);
-    } else {
-        setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
-        tft.print("BRUCE " + String(BRUCE_VERSION));
     }
 
+    // Count the status icons first: a full set of them needs the small clock,
+    // otherwise they would be drawn over the digits.
     int iconCount = 0;
     bool showSD = sdcardMounted;
     bool showGPS = gpsConnected;
@@ -955,47 +1011,79 @@ void drawStatusBar() {
     if (showBLE) iconCount++;
     if (showWG) iconCount++;
 
+    const int IW = 16;
+    const int IH = 16;
+    const int batteryLeft = tftWidth - 90 - UI_STATUS_INSET;
+
+    // Clock: the text is built first so the erase rectangle can be sized to it
+    // (a size-2 clock is 60 px wide, the old fixed 60 px wipe would have left
+    // the tail of the previous minute on screen).
+    String clockText;
+    if (clock_set) {
+#if defined(HAS_RTC)
+        updateTimeStr(_rtc.getTimeStruct());
+#else
+        updateTimeStr(rtc.getTimeStruct());
+#endif
+        clockText = timeStr;
+    } else {
+        clockText = "BRUCE " + String(BRUCE_VERSION);
+    }
+    const int clockX = UI_CLOCK_X;
+    const int clockSize = (iconCount <= 3) ? UI_CLOCK_SIZE : 1;
+    const int clockY = (clockSize == UI_CLOCK_SIZE) ? UI_CLOCK_Y : 17;
+    const int clockW = clockText.length() * LW * clockSize + LW;
+    // Always wipe the large cell so shrinking back to size 1 leaves no tail.
+    tft.fillRect(clockX, UI_CLOCK_Y, clockText.length() * LW * UI_CLOCK_SIZE + LW, LH * UI_CLOCK_SIZE, bruceConfig.bgColor);
+    setTftDisplay(clockX, clockY, UI_CLOCK_COLOR, clockSize, bruceConfig.bgColor);
+    tft.print(clockText);
+
     if (iconCount > 0) {
-        const int IW = 16;
-        const int IH = 16;
-        const int GAP = 6;
-        int totalW = iconCount * IW + (iconCount - 1) * GAP;
+        // Squeeze the gaps until the row fits between the clock and the battery.
+        int gap = 6;
+        const int left = clockX + clockW + 4;
+        const int right = batteryLeft - 4;
+        while (gap > 1 && iconCount * IW + (iconCount - 1) * gap > right - left) gap--;
+        int totalW = iconCount * IW + (iconCount - 1) * gap;
         int sx = (tftWidth - totalW) / 2;
+        if (sx < left) sx = left;
+        if (sx + totalW > right) sx = right - totalW;
+        if (sx < 0) sx = 0;
         int iy = 7;
         int idx = 0;
 
         if (showSD) {
-            int x = sx + idx * (IW + GAP);
+            int x = sx + idx * (IW + gap);
             tft.fillRect(x, iy, IW, IH, bruceConfig.bgColor);
             drawSdSmall(x, iy);
             idx++;
         }
         if (showGPS) {
-            int x = sx + idx * (IW + GAP);
+            int x = sx + idx * (IW + gap);
             tft.fillRect(x, iy, IW, IH, bruceConfig.bgColor);
             drawGpsSmall(x, iy);
             idx++;
         }
         if (showWifi) {
-            int x = sx + idx * (IW + GAP);
+            int x = sx + idx * (IW + gap);
             tft.fillRect(x, iy, IW, IH, bruceConfig.bgColor);
             drawWifiSmall(x, iy);
             idx++;
         }
         if (showWeb) {
-            int x = sx + idx * (IW + GAP);
+            int x = sx + idx * (IW + gap);
             tft.fillRect(x, iy, IW, IH, bruceConfig.bgColor);
             drawWebUISmall(x, iy);
             idx++;
         }
         if (showBLE) {
-            int x = sx + idx * (IW + GAP);
+            int x = sx + idx * (IW + gap);
             tft.fillRect(x, iy, IW, IH, bruceConfig.bgColor);
             drawBLESmall(x, iy);
             idx++;
         }
         if (showWG) {
-            int x = sx + idx * (IW + GAP);
+            int x = sx + idx * (IW + gap);
             tft.fillRect(x, iy, IW, IH, bruceConfig.bgColor);
             drawWireguardStatus(x, iy);
             idx++;
@@ -1003,96 +1091,29 @@ void drawStatusBar() {
     }
 }
 
-void drawMainBorder(bool clear) {
-    if (clear) {
-        tft.drawPixel(0, 0, 0);
-        tft.fillScreen(bruceConfig.bgColor);
-    }
-    setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
-    tft.setTextDatum(0);
-
-    // if(wifiConnected) {tft.print(timeStr);} else {tft.print("BRUCE 1.0b");}
-
-    drawStatusBar();
-
-#if defined(HAS_TOUCH)
-    TouchFooter();
-#endif
-}
-
-void drawMainBorderWithTitle(const String &title, bool clear) {
-    drawMainBorder(clear);
-    printTitle(title);
-}
-
-void printTitle(const String &title) {
-    String t = title;
-    t.toUpperCase();
-    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-
-    // Scale down title font if it doesn't fit the screen width
-    int titleSize = FM;
-    while (titleSize > FP && (int)(t.length() * titleSize * LW) > tftWidth - 2 * BORDER_PAD_X) {
-        titleSize--;
-    }
-
-    tft.setTextSize(titleSize);
-    tft.setCursor((tftWidth - (t.length() * titleSize * LW)) / 2, BORDER_PAD_Y);
-    tft.println(t);
-
-    tft.setTextSize(FP);
-}
-
-void printSubtitle(const String &subtitle, bool withLine) {
-    int16_t cursorX = (tftWidth - (subtitle.length() * FP * LW)) / 2;
-    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-    tft.setTextSize(FP);
-
-    tft.setCursor(cursorX, BORDER_PAD_Y + FM * LH);
-    tft.println(subtitle);
-
-    if (withLine) {
-        String line = "";
-        for (byte i = 0; i < subtitle.length(); i++) line += "-";
-
-        tft.setCursor(cursorX, tft.getCursorY());
-        tft.println(line);
-    }
-}
-
-void printFootnote(const String &text) {
-    tft.setTextSize(FP);
-    tft.drawRightString(text, tftWidth - BORDER_PAD_X, tftHeight - BORDER_PAD_X - FP * LH, SMOOTH_FONT);
-}
-
-void printCenterFootnote(const String &text) {
-    tft.fillRect(10, tftHeight - BORDER_PAD_X - FP * LH, tftWidth - 20, FP * LH, bruceConfig.bgColor);
-    tft.setTextSize(FP);
-    tft.drawCentreString(text, tftWidth / 2, tftHeight - BORDER_PAD_X - FP * LH, SMOOTH_FONT);
-}
-
 void drawBatteryStatus(uint8_t bat) {
     if (bat == 0) return;
 
+    const int ins = UI_STATUS_INSET;
     bool charging = isCharging();
 
     uint16_t color = bruceConfig.priColor;
     uint16_t barcolor = bruceConfig.priColor;
     if (bat < 16) barcolor = color = TFT_RED;
 
-    tft.drawRoundRect(tftWidth - 42, 7, 34, 17, 2, color);
+    tft.drawRoundRect(tftWidth - 42 - ins, 12, 34, 17, 2, color);
     tft.setTextSize(FP);
-    tft.fillRect(tftWidth - 85, 7, 42, 18, bruceConfig.bgColor);
+    tft.fillRect(tftWidth - 85 - ins, 12, 42, 18, bruceConfig.bgColor);
     if (charging) {
         tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-        tft.drawRightString("CHG", tftWidth - 44, 12, 1);
+        tft.drawRightString("CHG", tftWidth - 44 - ins, 17, 1);
     } else {
         tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-        tft.drawRightString((bat == 100 ? "" : " ") + String(bat) + "%", tftWidth - 44, 12, 1);
+        tft.drawRightString((bat == 100 ? "" : " ") + String(bat) + "%", tftWidth - 44 - ins, 17, 1);
     }
-    tft.fillRoundRect(tftWidth - 40, 9, 30 * bat / 100, 13, 2, barcolor);
-    tft.drawLine(tftWidth - 30, 9, tftWidth - 30, 9 + 13, bruceConfig.bgColor);
-    tft.drawLine(tftWidth - 20, 9, tftWidth - 20, 9 + 13, bruceConfig.bgColor);
+    tft.fillRoundRect(tftWidth - 40 - ins, 14, 30 * bat / 100, 13, 2, barcolor);
+    tft.drawLine(tftWidth - 30 - ins, 14, tftWidth - 30 - ins, 14 + 13, bruceConfig.bgColor);
+    tft.drawLine(tftWidth - 20 - ins, 14, tftWidth - 20 - ins, 14 + 13, bruceConfig.bgColor);
 }
 
 void drawWireguardStatus(int x, int y) {
@@ -1118,7 +1139,10 @@ Opt_Coord listFiles(int index, std::vector<FileList> fileList) {
         tft.fillScreen(bruceConfig.bgColor);
         tft.drawRoundRect(5, 5, tftWidth - 10, tftHeight - 10, 5, bruceConfig.priColor);
     }
-    tft.setCursor(10, 10);
+    // Start below the status bar and far enough right that the first character
+    // is not eaten by the top-left corner curve.
+    const int listX = 10 + (UI_SAFE_INSET > 0 ? 6 : 0);
+    tft.setCursor(listX, BORDER_PAD_Y);
     tft.setTextSize(FM);
     int i = 0;
     int arraySize = fileList.size();
@@ -1127,11 +1151,11 @@ Opt_Coord listFiles(int index, std::vector<FileList> fileList) {
         start = index - MAX_ITEMS + 1;
         if (start < 0) start = 0;
     }
-    int nchars = (tftWidth - 20) / (6 * tft.getTextSize());
+    int nchars = (tftWidth - listX - 10) / (6 * tft.getTextSize());
     String txt = ">";
     while (i < arraySize) {
         if (i >= start) {
-            tft.setCursor(10, tft.getCursorY());
+            tft.setCursor(listX, tft.getCursorY());
             if (fileList[i].folder == true)
                 tft.setTextColor(getColorVariation(bruceConfig.priColor), bruceConfig.bgColor);
             else if (fileList[i].operation == true) tft.setTextColor(ALCOLOR, bruceConfig.bgColor);
@@ -1139,7 +1163,7 @@ Opt_Coord listFiles(int index, std::vector<FileList> fileList) {
 
             if (index == i) {
                 txt = ">";
-                coord.x = 10 + FM * LW;
+                coord.x = listX + FM * LW;
                 coord.y = tft.getCursorY();
                 coord.size = nchars;
                 coord.fgcolor =

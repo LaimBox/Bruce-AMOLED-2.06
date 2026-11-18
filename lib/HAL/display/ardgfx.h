@@ -262,6 +262,57 @@ class tft_logger;
     #endif
 #endif
 // clang-format on
+
+// ---------------------------------------------------------------------------
+// CO5300 (AMOLED) quirk on the Waveshare ESP32-S3-Touch-AMOLED-2.06
+//
+// This panel only commits a write when the address window is *completely*
+// filled. Two consequences, both confirmed on hardware:
+//   * a window that is exactly one row high (PASET start == end) never shows
+//     up, even though the pixels were sent;
+//   * widening such a window to two rows is not enough - the data still has to
+//     cover both rows, otherwise the whole write is dropped.
+//
+// Everything that was invisible on this board comes from 1-row/1-pixel
+// writes: text without background colour, drawXBitmap icons, drawPixel,
+// drawRect/drawLine/drawCircle/drawArc outlines (1 px spans) and the flat
+// parts of fillCircle. fill* primitives use taller windows and always worked.
+//
+// Fix: do not paper over each primitive, patch the two driver entry points
+// where the amount of pixel data is known, and turn a one-row write into a
+// real two-row write with duplicated data. A single pixel becomes a 2x1
+// block and a 1 px line becomes 2 px thick - slightly chunky, but visible.
+// ---------------------------------------------------------------------------
+#if TFT_DISPLAY_DRIVER_N == 41 && !defined(TFT_CO5300_WINDOW_FIX)
+    #define TFT_CO5300_WINDOW_FIX
+class CO5300_WindowFix : public Arduino_CO5300 {
+  public:
+    using Arduino_CO5300::Arduino_CO5300;
+
+    // Horizontal/vertical spans: drawFastHLine, drawFastVLine, drawRect,
+    // drawLine, drawCircle, drawRoundRect, arcs, triangular fills.
+    void writeFillRectPreclipped(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
+        if (w <= 0 || h <= 0) return;
+        if (h == 1) {
+            // Grow downwards, but at the very last row grow upwards instead so
+            // the window stays inside GRAM (that row is under the bezel anyway).
+            if (y >= _max_y) y = _max_y - 1;
+            h = 2;
+        }
+        Arduino_TFT::writeFillRectPreclipped(x, y, w, h, color);
+    }
+
+    // Single pixels: drawPixel, drawXBitmap icons, text drawn without a
+    // background colour (the small clock font), pushImage() pixel by pixel.
+    void writePixelPreclipped(int16_t x, int16_t y, uint16_t color) override {
+        if (y >= _max_y) y = _max_y - 1;
+        Arduino_TFT::writeFillRectPreclipped(x, y, 1, 2, color);
+    }
+};
+    #undef TFT_DISPLAY_DRIVER
+    #define TFT_DISPLAY_DRIVER CO5300_WindowFix
+#endif
+
 class tft_display {
 protected:
     TFT_DATABUS_TYPE *bus = nullptr;
@@ -311,6 +362,7 @@ public:
     void
     pushImage(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *data, bool bpp8, uint16_t *cmap);
     void invertDisplay(bool i);
+    void setBrightness(uint8_t brightness);
     void sleep(bool value);
     void setSwapBytes(bool swap);
     bool getSwapBytes() const;

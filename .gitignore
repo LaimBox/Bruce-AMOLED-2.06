@@ -24,3 +24,6 @@ lib/mquickjs_headers/mqjs_stdlib_generator.exe
 .github/agents/Bruce-AI.agent.md
 .idea
 .ai
+
+# Reference vendor SDK dump (799 MB) used while porting, never committed
+boards/lilygo-t-display-s3/ESP32-display-support/

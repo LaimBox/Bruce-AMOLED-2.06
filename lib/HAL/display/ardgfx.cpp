@@ -2,14 +2,33 @@
 
 #if defined(USE_ARDUINO_GFX)
 
+#include <math.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-static SemaphoreHandle_t tftMutex;
-#define RUN_ON_MUTEX(fn)                                                                                     \
+static SemaphoreHandle_t tftMutex = nullptr;
+
+// The CO5300 quirk of this panel (a write into a one-row-high address window is
+// silently dropped) is handled inside the driver, see CO5300_WindowFix in
+// ardgfx.h. Every primitive below is therefore a plain pass-through and the
+// library keeps using its own (much cheaper) drawing code.
+
+// The mutex is created lazily: tft_display is a global object, so its
+// constructor can run before anything else touches the display, and boards
+// may also create sprite instances. The first caller creates it, the rest
+// reuse the same handle.
+static inline void tftEnsureMutex() {
+    if (tftMutex == nullptr) { tftMutex = xSemaphoreCreateRecursiveMutex(); }
+}
+
+// Variadic: statement blocks contain commas (function call arguments), which a
+// single-argument macro would split into extra parameters.
+#define RUN_ON_MUTEX(...)                                                                                    \
+    tftEnsureMutex();                                                                                        \
     xSemaphoreTakeRecursive(tftMutex, portMAX_DELAY);                                                        \
-    fn;                                                                                                      \
+    __VA_ARGS__;                                                                                             \
     xSemaphoreGiveRecursive(tftMutex);
 
 tft_display::tft_display(int16_t _W, int16_t _H) : _height(_H), _width(_W) {
@@ -128,10 +147,12 @@ tft_display::tft_display(int16_t _W, int16_t _H) : _height(_H), _width(_W) {
     );
 #endif
 
+    tftEnsureMutex();
 }
 // clang-format on
 void tft_display::begin(uint32_t speed) {
     (void)speed;
+    tftEnsureMutex();
     if (_gfx) {
         _gfx->begin();
         _width = _gfx->width();
@@ -220,7 +241,7 @@ void tft_display::fillTriangle(
 }
 
 void tft_display::drawEllipse(int16_t x0, int16_t y0, int32_t rx, int32_t ry, uint16_t color) {
-    RUN_ON_MUTEX(_gfx->drawEllipse(x0, y0, rx, ry, color));
+    if (_gfx) { RUN_ON_MUTEX(_gfx->drawEllipse(x0, y0, rx, ry, color)); }
 }
 
 void tft_display::fillEllipse(int16_t x0, int16_t y0, int32_t rx, int32_t ry, uint16_t color) {
@@ -287,6 +308,13 @@ void tft_display::pushImage(
     int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t *data, bool bpp8, uint16_t *cmap
 ) {
     pushImage(x, y, w, h, const_cast<uint8_t *>(data), bpp8, cmap);
+}
+
+void tft_display::setBrightness(uint8_t brightness) {
+    if (_gfx == nullptr) return;
+    // AMOLED panels (e.g. CO5300) set brightness inside the panel itself;
+    // there is no PWM backlight pin on those boards.
+    RUN_ON_MUTEX(static_cast<TFT_DISPLAY_DRIVER *>(_gfx)->setBrightness(brightness));
 }
 
 void tft_display::invertDisplay(bool i) {
@@ -439,9 +467,9 @@ void tft_display::drawWideLineFallback(float ax, float ay, float bx, float by, f
     if (!_gfx) return;
     float dx = bx - ax;
     float dy = by - ay;
-    float len = std::sqrt(dx * dx + dy * dy);
+    float len = sqrtf(dx * dx + dy * dy);
     if (len == 0) {
-        RUN_ON_MUTEX(_gfx->drawPixel(static_cast<int32_t>(ax), static_cast<int32_t>(ay), color));
+        drawPixel(static_cast<int32_t>(ax), static_cast<int32_t>(ay), color);
         return;
     }
     float nx = -dy / len;
@@ -450,13 +478,13 @@ void tft_display::drawWideLineFallback(float ax, float ay, float bx, float by, f
     for (int32_t i = -half; i <= half; ++i) {
         float ox = nx * static_cast<float>(i);
         float oy = ny * static_cast<float>(i);
-        RUN_ON_MUTEX(_gfx->drawLine(
+        drawLine(
             static_cast<int32_t>(ax + ox),
             static_cast<int32_t>(ay + oy),
             static_cast<int32_t>(bx + ox),
             static_cast<int32_t>(by + oy),
             color
-        ));
+        );
     }
 }
 

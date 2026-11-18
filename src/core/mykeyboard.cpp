@@ -15,6 +15,12 @@
 #define HAS_1_BUTTON 1
 #endif
 
+// Boards with rounded corners declare how far their content has to stay from
+// the glass edge; 0 keeps the historical full-width keyboard.
+#ifndef UI_SAFE_INSET
+#define UI_SAFE_INSET 0
+#endif
+
 int max_FM_size = tftWidth / (LW * FM) - 1;
 int max_FP_size = tftWidth / (LW)-2;
 
@@ -505,12 +511,45 @@ String generalKeyboard(
     const int PAD = 2;
     const int KBLH = 6 + LH * FM;
     const int counter_height = LH * FP;
-    const int top_button_text_y = 2 + (KBLH - LH * FM) / 2;
-    const int counter_y = KBLH + 4;
-    const int textbox_y = KBLH + counter_height + 5;
+    // The keyboard draws its own full-screen layout: start below the status bar
+    // band so the top row is not clipped, and keep the whole block inside
+    // UI_SAFE_INSET on boards with rounded corners.
+    const int KB_TOP = (UI_SAFE_INSET > 0) ? BORDER_PAD_Y : 27;
+    const int KB_X = UI_SAFE_INSET;
+    const int top_button_y = KB_TOP + 2;
+    const int top_button_text_y = KB_TOP + 2 + (KBLH - LH * FM) / 2;
+    const int counter_y = KB_TOP + KBLH + 4;
+    const int textbox_y = KB_TOP + KBLH + counter_height + 5;
     const int textbox_text_y = textbox_y + 2;
     const int keyboard_start_y = textbox_y + KBLH + 2;
 
+#if UI_SAFE_INSET > 0
+    // Top row laid out evenly inside the safe rectangle: the hard-coded layout
+    // below spans almost the full glass width, so the first and last buttons
+    // were cut by the rounded corners.
+    const int BTN_W = ((tftWidth - 2 * KB_X) - (buttons_number - 1) * PAD) / buttons_number;
+    const int btn_text_dx = (BTN_W - 2 * LW * FM) / 2;
+    const int row_w = buttons_number * BTN_W + (buttons_number - 1) * PAD;
+    const int row_x = (tftWidth - row_w) / 2;
+    const int B0 = row_x + 0 * (BTN_W + PAD);
+    const int B1 = row_x + 1 * (BTN_W + PAD);
+    const int B2 = row_x + 2 * (BTN_W + PAD);
+    const int B3 = row_x + 3 * (BTN_W + PAD);
+    const int B4 = row_x + 4 * (BTN_W + PAD);
+#if HAS_1_BUTTON
+    const int B5 = row_x + 5 * (BTN_W + PAD);
+#endif
+    const int btns_layout[buttons_number][3] = {
+        {B0, BTN_W, B0 + btn_text_dx}, // Ok
+        {B1, BTN_W, B1 + btn_text_dx}, // ab/A@
+        {B2, BTN_W, B2 + btn_text_dx}, // <-
+        {B3, BTN_W, B3 + btn_text_dx}, // _ {Space}
+        {B4, BTN_W, B4 + btn_text_dx}, // Ex
+#if HAS_1_BUTTON
+        {B5, BTN_W, B5 + btn_text_dx}, // R/D or L/U
+#endif
+    };
+#else
     const int btns_layout[buttons_number][3] = {
         {1 * PAD + 0 * LW * FM,  3 * LW * FM, 1 * PAD + 0 * LW * FM + LW * FM / 2  }, // Ok
         {2 * PAD + 3 * LW * FM,  3 * LW * FM, 2 * PAD + 3 * LW * FM + LW * FM / 2  }, // ab/A@
@@ -521,9 +560,17 @@ String generalKeyboard(
         {6 * PAD + 15 * LW * FM, 4 * LW * FM, 6 * PAD + 15 * LW * FM + LW * FM / 2 }, // R/D or L/U
 #endif
     };
+#endif
 
-    const int key_width = tftWidth / KeyboardWidth;
-    const int key_height = (tftHeight - keyboard_start_y) / KeyboardHeight;
+    const int key_width = (tftWidth - 2 * KB_X) / KeyboardWidth;
+    // Integer division leaves a few unused pixels on the right; split them so the
+    // grid stays centred instead of hugging the left inset.
+    const int key_x0 = KB_X + ((tftWidth - 2 * KB_X) % KeyboardWidth) / 2;
+    // The last keyboard row must end above the bottom corner curve too: the
+    // glass' safe bottom edge is TFT_HEIGHT-27 = 475, which is 7 px above the
+    // 482 px layout height.
+    const int kb_bottom = UI_SAFE_INSET > 0 ? (tftHeight - 7) : tftHeight;
+    const int key_height = (kb_bottom - keyboard_start_y) / KeyboardHeight;
     const int text_offset_x = key_width / 2 - LW * FM / 2;
     const int text_offset_y = key_height / 2 - LH * FM / 2;
 
@@ -541,7 +588,7 @@ String generalKeyboard(
             box_list[k].key = keys[j][i][0];
             box_list[k].key_sh = keys[j][i][1];
             box_list[k].color = ~bruceConfig.bgColor;
-            box_list[k].x = i * key_width;
+            box_list[k].x = key_x0 + i * key_width;
             box_list[k].y = j * key_height + keyboard_start_y;
             box_list[k].w = key_width;
             box_list[k].h = key_height;
@@ -555,7 +602,7 @@ String generalKeyboard(
         box_list[k].key_sh = ' ';
         box_list[k].color = ~bruceConfig.bgColor;
         box_list[k].x = btns_layout[i][0];
-        box_list[k].y = 0;
+        box_list[k].y = KB_TOP;
         box_list[k].w = btns_layout[i][1];
         box_list[k].h = KBLH + 2;
         k++;
@@ -582,19 +629,19 @@ String generalKeyboard(
             if (y < 0 || old_y < 0 || caps != last_caps || direction != last_dir) {
                 last_caps = caps;
                 last_dir = direction;
-                tft.fillRect(0, 1, tftWidth, KBLH + 2, bruceConfig.bgColor);
+                tft.fillRect(0, KB_TOP + 1, tftWidth, KBLH + 2, bruceConfig.bgColor);
                 // Draw the buttons_strings borders
                 for (int i = 0; i < buttons_number; ++i) {
                     tft.drawRect(
                         btns_layout[i][0],
-                        2,
+                        top_button_y,
                         btns_layout[i][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
                     );
                 }
 
-                tft.drawRect(3, textbox_y, tftWidth - 3, KBLH, bruceConfig.priColor); // typed string border
+                tft.drawRect(KB_X + 1, textbox_y, tftWidth - 2 * KB_X - 1, KBLH, bruceConfig.priColor); // typed string border
 
                 /* Highlight the corresponding button when the user cursor is over it */
                 // OK
@@ -602,7 +649,7 @@ String generalKeyboard(
                     tft.setTextColor(bruceConfig.bgColor, getComplementaryColor2(bruceConfig.bgColor));
                     tft.fillRect(
                         btns_layout[0][0],
-                        2,
+                        top_button_y,
                         btns_layout[0][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
@@ -614,13 +661,13 @@ String generalKeyboard(
                     tft.setTextColor(bruceConfig.bgColor, getComplementaryColor2(bruceConfig.bgColor));
                     tft.fillRect(
                         btns_layout[1][0],
-                        2,
+                        top_button_y,
                         btns_layout[1][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
                     );
                 } else if (caps) {
-                    tft.fillRect(btns_layout[1][0], 2, btns_layout[1][1], KBLH, TFT_DARKGREY);
+                    tft.fillRect(btns_layout[1][0], top_button_y, btns_layout[1][1], KBLH, TFT_DARKGREY);
                     tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), TFT_DARKGREY);
                 } else tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), bruceConfig.bgColor);
                 tft.drawString(caps ? "ab" : "A@", btns_layout[1][2], top_button_text_y);
@@ -629,7 +676,7 @@ String generalKeyboard(
                     tft.setTextColor(bruceConfig.bgColor, getComplementaryColor2(bruceConfig.bgColor));
                     tft.fillRect(
                         btns_layout[2][0],
-                        2,
+                        top_button_y,
                         btns_layout[2][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
@@ -641,7 +688,7 @@ String generalKeyboard(
                     tft.setTextColor(bruceConfig.bgColor, getComplementaryColor2(bruceConfig.bgColor));
                     tft.fillRect(
                         btns_layout[3][0],
-                        2,
+                        top_button_y,
                         btns_layout[3][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
@@ -653,7 +700,7 @@ String generalKeyboard(
                     tft.setTextColor(bruceConfig.bgColor, getComplementaryColor2(bruceConfig.bgColor));
                     tft.fillRect(
                         btns_layout[4][0],
-                        2,
+                        top_button_y,
                         btns_layout[4][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
@@ -666,13 +713,13 @@ String generalKeyboard(
                     tft.setTextColor(bruceConfig.bgColor, getComplementaryColor2(bruceConfig.bgColor));
                     tft.fillRect(
                         btns_layout[5][0],
-                        2,
+                        top_button_y,
                         btns_layout[5][1],
                         KBLH,
                         getComplementaryColor2(bruceConfig.bgColor)
                     );
                 } else if (!direction) {
-                    tft.fillRect(btns_layout[5][0], 2, btns_layout[5][1], KBLH, TFT_DARKGREY);
+                    tft.fillRect(btns_layout[5][0], top_button_y, btns_layout[5][1], KBLH, TFT_DARKGREY);
                     tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), TFT_DARKGREY);
                 } else tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), bruceConfig.bgColor);
                 tft.drawString(direction ? "R/D" : "L/U", btns_layout[5][2], top_button_text_y);
@@ -684,18 +731,20 @@ String generalKeyboard(
             tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), bruceConfig.bgColor);
             String chars_counter = String(current_text.length()) + "/" + String(max_size);
             tft.fillRect(
-                tftWidth - ((chars_counter.length() * LW * FP) + 20),
+                tftWidth - KB_X - ((chars_counter.length() * LW * FP) + 20),
                 counter_y,
                 (chars_counter.length() * LW * FP) + 20,
                 LH * FP,
                 bruceConfig.bgColor
             ); // clear previous text
-            tft.drawString(chars_counter, tftWidth - ((chars_counter.length() * LW * FP) + 10), counter_y);
+            tft.drawString(
+                chars_counter, tftWidth - KB_X - ((chars_counter.length() * LW * FP) + 10), counter_y
+            );
 
             // Prints the title of the textbox, it should report what the user has to write in it
             tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), 0x5AAB);
             tft.drawString(
-                textbox_title.substring(0, max_FP_size - chars_counter.length() - 1), 3, counter_y
+                textbox_title.substring(0, max_FP_size - chars_counter.length() - 1), KB_X + 3, counter_y
             );
 
             // Drawing the textbox and the currently typed string
@@ -703,7 +752,7 @@ String generalKeyboard(
             // reset the text box if needed
             if (current_text.length() == (max_FM_size) || current_text.length() == (max_FM_size + 1) ||
                 current_text.length() == (max_FP_size) || current_text.length() == (max_FP_size + 1))
-                tft.fillRect(3, textbox_y, tftWidth - 3, KBLH, bruceConfig.bgColor);
+                tft.fillRect(KB_X + 1, textbox_y, tftWidth - 2 * KB_X - 1, KBLH, bruceConfig.bgColor);
             // write the text
             tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor));
 
@@ -716,30 +765,32 @@ String generalKeyboard(
                     tft.drawString(
                         (mask_input ? repeatString(current_text.substring(0, max_FP_size).length(), "*")
                                     : current_text.substring(0, max_FP_size)),
-                        5,
+                        KB_X + 3,
                         textbox_text_y
                     );
                     tft.drawString(
                         (mask_input ? repeatString(current_text.length() - max_FP_size, "*")
                                     : current_text.substring(max_FP_size, current_text.length())),
-                        5,
+                        KB_X + 3,
                         textbox_text_y + LH * FP
                     );
                 } else {
                     tft.drawString(
                         (mask_input ? repeatString(current_text.length(), "*") : current_text),
-                        5,
+                        KB_X + 3,
                         textbox_text_y
                     );
                 }
             } else {
                 // else if it fits, just draw the text
                 tft.drawString(
-                    (mask_input ? repeatString(current_text.length(), "*") : current_text), 5, textbox_text_y
+                    (mask_input ? repeatString(current_text.length(), "*") : current_text),
+                    KB_X + 3,
+                    textbox_text_y
                 );
             }
             // Draw the textbox border again(?)
-            tft.drawRect(3, textbox_y, tftWidth - 3, KBLH, bruceConfig.priColor); // typed string border
+            tft.drawRect(KB_X + 1, textbox_y, tftWidth - 2 * KB_X - 1, KBLH, bruceConfig.priColor); // typed string border
 
             tft.setTextColor(getComplementaryColor2(bruceConfig.bgColor), bruceConfig.bgColor);
             tft.setTextSize(FM);
@@ -748,7 +799,7 @@ String generalKeyboard(
             for (int i = 0; i < KeyboardHeight; i++) {
                 for (int j = 0; j < KeyboardWidth; j++) {
                     // key coordinates
-                    int key_x = j * key_width;
+                    int key_x = key_x0 + j * key_width;
                     int key_y = i * key_height + keyboard_start_y;
 
                     // Use the previous coordinates to redraw only the previous letter
@@ -782,14 +833,14 @@ String generalKeyboard(
             tft.setTextSize(FP);
             if (current_text.length() > (max_FP_size)) {
                 cursor_y = textbox_text_y + LH * FP;
-                cursor_x = 5 + (current_text.length() - max_FP_size) * LW * FP;
+                cursor_x = KB_X + 3 + (current_text.length() - max_FP_size) * LW * FP;
             } else {
                 cursor_y = textbox_text_y;
-                cursor_x = 5 + current_text.length() * LW * FP;
+                cursor_x = KB_X + 3 + current_text.length() * LW * FP;
             }
         } else {
             cursor_y = textbox_text_y;
-            cursor_x = 5 + current_text.length() * LW * FM;
+            cursor_x = KB_X + 3 + current_text.length() * LW * FM;
         }
         // Prioritize Serial Input for navigation
         if (SerialCmdPress) { // only for Remote Control, if no type of input was detected on device

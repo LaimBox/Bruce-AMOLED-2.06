@@ -27,7 +27,14 @@ public:
     String getName() const { return String(_name); }
 
     void draw(float scale = 1) {
-        if (rotation != bruceConfigPins.rotation) resetCoordinates();
+        // Coordinates are computed in the constructor, which for global menu
+        // objects runs before setup() has called tft.begin()/begin_tft().
+        // At that point tftWidth/tftHeight still hold the compile-time
+        // (landscape) defaults, so on a portrait panel the cached centre is
+        // wrong by tens of pixels. Recompute whenever the real geometry has
+        // changed, not only when the rotation setting changes.
+        if (rotation != bruceConfigPins.rotation || _lastW != tftWidth || _lastH != tftHeight)
+            resetCoordinates();
         if (!checkTheme()) {
             tft.fillRect(0, 27, tftWidth, tftHeight - 27, bruceConfig.bgColor);
             drawIcon(scale);
@@ -123,6 +130,8 @@ protected:
 
     int arrowAreaX = BORDER_PAD_X;
     int arrowAreaW = iconAreaX - arrowAreaX;
+    int _lastW = -1;
+    int _lastH = -1;
 
     MenuItemInterface(const char *name) : _name(name) {}
 
@@ -154,6 +163,8 @@ protected:
         arrowAreaW = iconAreaX - arrowAreaX;
 
         rotation = bruceConfigPins.rotation;
+        _lastW = tftWidth;
+        _lastH = tftHeight;
     }
 
 private:
