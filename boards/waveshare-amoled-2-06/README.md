@@ -88,10 +88,13 @@ the geometry changes.
 
 ## Known issues
 
-* The submenu scrollbar track can leave thumb-shaped ghosts in its lower part on
-  this panel. It does not reproduce in a stripped-down test firmware with the
-  same fills, so the cause is still open. The track is now erased in <= 128-row
-  stripes instead of one 2410-pixel write.
+* The submenu scrollbar can leave thumb-shaped ghosts behind it, at both ends of
+  the track. It does not reproduce in a stripped-down test firmware with the
+  same fills, which points at AMOLED image retention (a bright element on black
+  keeps glowing for a while) rather than at the driver. The bar now sits away
+  from the bezel and is drawn as a dark track with a thumb, so leftover pixels
+  are visible instead of hiding in the background; if the marks fade after the
+  screen has been left alone for a minute, it is the panel, not the code.
 
 ## Support this port
 
