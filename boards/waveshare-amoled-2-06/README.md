@@ -22,6 +22,10 @@ the cause of most of the layout work in this port.
 
 ## Build and flash
 
+A prebuilt image is attached to the
+[latest release](https://github.com/LaimBox/Bruce-AMOLED-2.06/releases/latest)
+(`firmware.factory.bin`). To build it yourself:
+
 ```bash
 # from the repository root
 pio run -e waveshare-amoled-2-06
