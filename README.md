@@ -1,3 +1,16 @@
+> ### Waveshare ESP32-S3-Touch-AMOLED-2.06 port
+>
+> This fork adds board support for the **Waveshare ESP32-S3-Touch-AMOLED-2.06**
+> watch (ESP32-S3, 16 MB flash, 8 MB PSRAM, CO5300 410x502 AMOLED,
+> FT3168 touch, AXP2101 PMU, PCF85063 RTC, QMI8658 IMU).
+>
+> * Pinout, build and flashing instructions, and the three bugs that had to be
+>   fixed for this panel: [`boards/waveshare-amoled-2-06/README.md`](boards/waveshare-amoled-2-06/README.md)
+> * Ready-to-flash `firmware.factory.bin`: [Releases](../../releases)
+> * Build it yourself: `pio run -e waveshare-amoled-2-06`
+>
+> Everything below is the original Bruce documentation.
+
 ![Bruce Main Menu](./media/pictures/bruce_banner.jpg)
 
 # :shark: Bruce
